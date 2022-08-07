@@ -56,7 +56,9 @@ func init() {
 }
 
 func main() {
-	execute()
+	// execute()
+	fmt.Println(os.Args[1])
+	fmt.Println(restoreEscChar(os.Args[1]))
 }
 
 func replaceinFile(oldText, newText, fileName string) error {
@@ -82,8 +84,8 @@ func replaceinFile(oldText, newText, fileName string) error {
 	}
 	for _, col := range cols {
 		for _, rowCell := range col {
-			fmt.Print(rowCell, "\n")
-			fmt.Print("\n", oldText, "\n")
+			// fmt.Print(rowCell, "\n")
+			// fmt.Print("\n", oldText, "\n")
 			newCell := strings.Replace(rowCell, restoredText, newText, -1)
 			fmt.Print("\n", newCell, "\n")
 		}
