@@ -5,18 +5,18 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/spf13/cobra"
 	"github.com/xuri/excelize/v2"
 	"log"
 	"os"
-	"strings"
 )
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "excel_text_replacer old_text new_text target_file",
-	Short: "A brief description of your application",
+	Use:   "excel_text_replacer src_file dst_file",
+	Short: "convert an excel file to text-format file",
 	Long: `A longer description that spans multiple lines and likely contains
 examples and usage of using your application. For example:
 
@@ -25,10 +25,10 @@ This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
-	Args: cobra.MinimumNArgs(3),
+	Args: cobra.MinimumNArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("excuting: [%s] %s -> %s\n", args[2], args[0], args[1])
-		if err := replaceinFile(args[0], args[1], args[2]); err != nil {
+		fmt.Printf("coverting: %s -> %s\n", args[0], args[1])
+		if err := convertFile(args[0], args[1]); err != nil {
 			log.Fatal(err)
 		}
 	},
@@ -59,10 +59,8 @@ func main() {
 	execute()
 }
 
-func replaceinFile(oldText, newText, fileName string) error {
-	fmt.Println(oldText)
-	restoredText := restoreEscChar(oldText)
-	f, err := excelize.OpenFile(fileName)
+func convertFile(srcFileName, dstFileName string) error {
+	f, err := excelize.OpenFile(srcFileName)
 	if err != nil {
 		log.Fatal(err)
 		return err
@@ -74,47 +72,58 @@ func replaceinFile(oldText, newText, fileName string) error {
 		}
 	}()
 
-	// Get all the cols in the Sheet1.
-	cols, err := f.GetCols("Sheet2")
+	mapD := make(map[string]map[string]string)
+	for _, sheetName := range f.GetSheetList() {
+		fmt.Println(sheetName)
+		mapD[sheetName] = make(map[string]string)
+		// Get all the cols.
+		cols, err := f.GetCols(sheetName)
+		if err != nil {
+			log.Fatal(err)
+			return err
+		}
+		for i, col := range cols {
+			for j, rowCell := range col {
+				if rowCell == "" {
+					continue
+				}
+				coord, err := excelize.CoordinatesToCellName(i+1, j+1)
+				if err != nil {
+					log.Fatal(err)
+					return err
+				}
+				fmt.Print("\n", coord, "\n")
+				fmt.Print(rowCell, "\n")
+				mapD[sheetName][coord] = rowCell
+			}
+			fmt.Print("\n\n")
+		}
+	}
+
+	bolB, _ := json.MarshalIndent(mapD, "", "  ")
+	fmt.Println(string(bolB))
+	err = writeFile(dstFileName, bolB)
 	if err != nil {
 		log.Fatal(err)
 		return err
-	}
-	for _, col := range cols {
-		for _, rowCell := range col {
-			fmt.Print(rowCell, "\n")
-			fmt.Print("\n", oldText, "\n")
-			newCell := strings.Replace(rowCell, restoredText, newText, -1)
-			fmt.Print("\n", newCell, "\n")
-		}
-		fmt.Print("\n\n")
 	}
 
 	return nil
 }
 
-func restoreEscChar(oriString string) string {
-	// test escape character
-	escCharMap := map[string]string{"\\n": "\n", "\\t": "\t"}
+func writeFile(fileName string, content []byte) error {
+	filePtr, err := os.Create(fileName)
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+	defer filePtr.Close()
 
-	printChar(oriString)
-
-	expectedString := oriString
-	for k, v := range escCharMap {
-		//fmt.Printf("%s: %s.\n", k, v)
-		expectedString = strings.ReplaceAll(expectedString, k, v)
+	_, err = filePtr.Write(content)
+	if err != nil {
+		log.Fatal(err)
+		return err
 	}
 
-	printChar(expectedString)
-
-	return expectedString
-}
-
-func printChar(str string) {
-	char := []byte(str)
-	fmt.Println("len:", len(char))
-	for _, c := range char {
-		fmt.Printf("%c[%d] ", c, c)
-	}
-	fmt.Println()
+	return nil
 }
