@@ -25,10 +25,17 @@ This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
-	Args: cobra.MinimumNArgs(2),
+	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("coverting: %s -> %s\n", args[0], args[1])
-		if err := convertFile(args[0], args[1]); err != nil {
+		srcName := args[0]
+		var dstName string
+		if len(args) == 2 {
+			dstName = args[1]
+		} else {
+			dstName = args[0] + ".json"
+		}
+		fmt.Printf("coverting: %s -> %s\n", srcName, dstName)
+		if err := convertFile(srcName, dstName); err != nil {
 			log.Fatal(err)
 		}
 	},
