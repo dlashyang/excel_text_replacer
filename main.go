@@ -28,12 +28,18 @@ to quickly create a Cobra application.`,
 	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		flagUpdate, _ := cmd.Flags().GetBool("update")
-		excelFileName := args[0]
-		var textFileName string
+		var excelFileName, textFileName string
 		if len(args) == 2 {
+			excelFileName = args[0]
 			textFileName = args[1]
 		} else {
-			textFileName = args[0] + ".md"
+			if flagUpdate {
+				textFileName = args[0]
+				excelFileName = strings.TrimSuffix(textFileName, ".md")
+			} else {
+				excelFileName = args[0]
+				textFileName = excelFileName + ".md"
+			}
 		}
 
 		if flagUpdate {
@@ -146,7 +152,7 @@ func text2excel(excelFile, textFile string) error {
 		log.Fatal(err)
 	}
 
-	if err = f.Save(); err != nil {
+	if err = f.SaveAs("new_" + excelFile); err != nil {
 		log.Fatal(err)
 	}
 
