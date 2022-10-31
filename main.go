@@ -10,6 +10,7 @@ import (
 	"github.com/xuri/excelize/v2"
 	"log"
 	"os"
+	"strings"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -109,7 +110,7 @@ func text2excel(excelFile, textFile string) error {
 		} else {
 			if (len(content) >= 3) && (content[0:3] == "'''") {
 				if flagContentStart {
-					cellContent = cellContent[:len(cellContent)-1]
+					cellContent = strings.TrimSuffix(cellContent, "\n")
 					//check or update cell
 					cell, err := f.GetCellValue(sheetName, coord)
 					if err != nil {
@@ -129,10 +130,12 @@ func text2excel(excelFile, textFile string) error {
 			} else {
 				if flagContentStart {
 					cellContent += content + "\n"
-				} else if content != "" {
-					log.Println("skip line:", content)
 				} else {
-					continue
+					if content != "" {
+						log.Println("skip line:", content)
+					} else {
+						continue
+					}
 				}
 			}
 			//fmt.Println("content is: \n", content)
