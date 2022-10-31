@@ -1,11 +1,10 @@
 /*
 Copyright © 2022 NAME HERE <EMAIL ADDRESS>
-
 */
 package main
 
 import (
-	"encoding/json"
+	"bufio"
 	"fmt"
 	"github.com/spf13/cobra"
 	"github.com/xuri/excelize/v2"
@@ -15,7 +14,7 @@ import (
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:   "excel_text_replacer src_file dst_file",
+	Use:   "excel_text_replacer excel_file_name",
 	Short: "convert an excel file to text-format file",
 	Long: `A longer description that spans multiple lines and likely contains
 examples and usage of using your application. For example:
@@ -27,16 +26,25 @@ to quickly create a Cobra application.`,
 	// has an action associated with it:
 	Args: cobra.MinimumNArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		srcName := args[0]
-		var dstName string
+		flagUpdate, _ := cmd.Flags().GetBool("update")
+		excelFileName := args[0]
+		var textFileName string
 		if len(args) == 2 {
-			dstName = args[1]
+			textFileName = args[1]
 		} else {
-			dstName = args[0] + ".json"
+			textFileName = args[0] + ".md"
 		}
-		fmt.Printf("coverting: %s -> %s\n", srcName, dstName)
-		if err := convertFile(srcName, dstName); err != nil {
-			log.Fatal(err)
+
+		if flagUpdate {
+			fmt.Printf("updating: %s -> %s\n", textFileName, excelFileName)
+			if err := text2excel(excelFileName, textFileName); err != nil {
+				log.Fatal(err)
+			}
+		} else {
+			fmt.Printf("coverting: %s -> %s\n", excelFileName, textFileName)
+			if err := excel2text(excelFileName, textFileName); err != nil {
+				log.Fatal(err)
+			}
 		}
 	},
 }
@@ -59,15 +67,15 @@ func init() {
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
-	rootCmd.Flags().BoolP("no-new-file", "n", false, "save on the original file")
+	rootCmd.Flags().BoolP("update", "u", false, "update from text file")
 }
 
 func main() {
 	execute()
 }
 
-func convertFile(srcFileName, dstFileName string) error {
-	f, err := excelize.OpenFile(srcFileName)
+func text2excel(excelFile, textFile string) error {
+	f, err := excelize.OpenFile(excelFile)
 	if err != nil {
 		log.Fatal(err)
 		return err
@@ -79,10 +87,86 @@ func convertFile(srcFileName, dstFileName string) error {
 		}
 	}()
 
-	mapD := make(map[string]map[string]string)
+	file, err := os.Open(textFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	var sheetName, coord, cellContent string
+	flagContentStart := false
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		content := scanner.Text()
+		//fmt.Println("line 100: ", content)
+
+		if (len(content) > 3) && (content[0:3] == "#  ") {
+			sheetName = content[3:]
+			//fmt.Println("sheetname: ", sheetName)
+		} else if (len(content) > 3) && (content[0:3]) == "## " {
+			coord = content[3:]
+			//fmt.Println("coordination: ", coord)
+		} else {
+			if (len(content) >= 3) && (content[0:3] == "'''") {
+				if flagContentStart {
+					cellContent = cellContent[:len(cellContent)-1]
+					//check or update cell
+					cell, err := f.GetCellValue(sheetName, coord)
+					if err != nil {
+						log.Fatal(err)
+						return (err)
+					}
+					if cellContent != cell {
+						f.SetCellStr(sheetName, coord, cellContent)
+						fmt.Println("content update: ", coord)
+						fmt.Println(cell, " -> ", cellContent)
+					}
+					cellContent = ""
+					flagContentStart = false
+				} else {
+					flagContentStart = true
+				}
+			} else {
+				if flagContentStart {
+					cellContent += content + "\n"
+				} else if content != "" {
+					log.Println("skip line:", content)
+				} else {
+					continue
+				}
+			}
+			//fmt.Println("content is: \n", content)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	if err = f.Save(); err != nil {
+		log.Fatal(err)
+	}
+
+	return nil
+}
+
+func excel2text(excelFile, textFile string) error {
+	f, err := excelize.OpenFile(excelFile)
+	if err != nil {
+		log.Fatal(err)
+		return err
+	}
+	defer func() {
+		// Close the spreadsheet.
+		if err := f.Close(); err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	textOutput := ""
 	for _, sheetName := range f.GetSheetList() {
 		fmt.Println(sheetName)
-		mapD[sheetName] = make(map[string]string)
+		textOutput += "#  " + sheetName + "\n\n"
 		// Get all the cols.
 		cols, err := f.GetCols(sheetName)
 		if err != nil {
@@ -100,16 +184,16 @@ func convertFile(srcFileName, dstFileName string) error {
 					return err
 				}
 				fmt.Print("\n", coord, "\n")
+				textOutput += "## " + coord + "\n\n"
 				fmt.Print(rowCell, "\n")
-				mapD[sheetName][coord] = rowCell
+				textOutput += "'''\n" + rowCell + "\n'''\n\n"
 			}
 			fmt.Print("\n\n")
 		}
 	}
 
-	bolB, _ := json.MarshalIndent(mapD, "", "  ")
-	fmt.Println(string(bolB))
-	err = writeFile(dstFileName, bolB)
+	fmt.Println(textOutput)
+	err = writeFile(textFile, textOutput)
 	if err != nil {
 		log.Fatal(err)
 		return err
@@ -118,7 +202,7 @@ func convertFile(srcFileName, dstFileName string) error {
 	return nil
 }
 
-func writeFile(fileName string, content []byte) error {
+func writeFile(fileName string, content string) error {
 	filePtr, err := os.Create(fileName)
 	if err != nil {
 		log.Fatal(err)
@@ -126,7 +210,7 @@ func writeFile(fileName string, content []byte) error {
 	}
 	defer filePtr.Close()
 
-	_, err = filePtr.Write(content)
+	_, err = filePtr.WriteString(content)
 	if err != nil {
 		log.Fatal(err)
 		return err
