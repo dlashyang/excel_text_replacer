@@ -107,14 +107,14 @@ func text2excel(excelFile, textFile string) error {
 		content := scanner.Text()
 		//fmt.Println("line 100: ", content)
 
-		if (len(content) > 3) && (content[0:3] == "#  ") {
-			sheetName = content[3:]
+		if strings.HasPrefix(content, "#  ") {
+			sheetName = strings.TrimPrefix(content, "#  ")
 			//fmt.Println("sheetname: ", sheetName)
-		} else if (len(content) > 3) && (content[0:3]) == "## " {
-			coord = content[3:]
+		} else if strings.HasPrefix(content, "## ") {
+			coord = strings.TrimPrefix(content, "## ")
 			//fmt.Println("coordination: ", coord)
 		} else {
-			if (len(content) >= 3) && (content[0:3] == "'''") {
+			if strings.HasPrefix(content, "'''") {
 				if flagContentStart {
 					cellContent = strings.TrimSuffix(cellContent, "\n")
 					//check or update cell
@@ -125,7 +125,7 @@ func text2excel(excelFile, textFile string) error {
 					}
 					if cellContent != cell {
 						f.SetCellStr(sheetName, coord, cellContent)
-						fmt.Println("content update: ", coord)
+						fmt.Println("Cell update: ", sheetName, coord)
 						fmt.Println(cell, " -> ", cellContent)
 					}
 					cellContent = ""
