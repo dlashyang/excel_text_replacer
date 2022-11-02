@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/xuri/excelize/v2"
+	"io"
 	"log"
 	"os"
 	"strings"
@@ -20,9 +21,29 @@ const helpMsg = `Usage:
   Converting to text file: excel_text_replacer excel_file text_file
   Updating excel file from text file: excel_text_replacer text_file excel_file`
 
+var flagDbgMsg bool
+var dbgLog *log.Logger
+
+func initLogger() {
+	file, err := os.OpenFile("log.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+	mw := io.MultiWriter(os.Stdout, file)
+	log.SetOutput(mw)
+
+	if flagDbgMsg {
+		dbgLog = log.New(mw, "DEBUG: ", log.Lshortfile)
+	} else {
+		dbgLog = log.New(file, "DEBUG: ", log.Lshortfile)
+	}
+}
+
 func main() {
+	flag.BoolVar(&flagDbgMsg, "v", false, "print debug info")
 	flag.Parse()
 
+	initLogger()
 	args := flag.Args()
 	genName := false
 	if len(args) < 1 {
@@ -78,6 +99,7 @@ func text2excel(excelFile, textFile string) error {
 	defer fpText.Close()
 
 	var sheet, coord, newCell string
+	cellUpdated := 0
 	scanner := bufio.NewScanner(fpText)
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -105,7 +127,9 @@ func text2excel(excelFile, textFile string) error {
 						log.Fatal("cell update fail", sheet, coord, err)
 						continue
 					}
-					log.Printf("Cell update: %s:%s\n-----\n%s\n=====\n%s\n++++\n", sheet, coord, cell, newCell)
+					cellUpdated++
+					log.Printf("cell update: %s:%s\n", sheet, coord)
+					dbgLog.Printf("cell update: %s:%s\n-----\n%s\n=====\n%s\n++++\n", sheet, coord, cell, newCell)
 				}
 				continue
 			}
@@ -121,6 +145,7 @@ func text2excel(excelFile, textFile string) error {
 	if err = fpExcel.SaveAs("new_" + excelFile); err != nil {
 		return fmt.Errorf("excel file save fail: %s", err)
 	}
+	log.Println("cell updated: ", cellUpdated)
 
 	return nil
 }
@@ -138,6 +163,7 @@ func excel2text(excelFile, textFile string) error {
 	}()
 
 	textOut := ""
+	cellFound := 0
 	for _, sheet := range fpExcel.GetSheetList() {
 		log.Println("found sheet: ", sheet)
 		textOut += h1 + sheet + "\n\n"
@@ -157,12 +183,13 @@ func excel2text(excelFile, textFile string) error {
 				}
 				textOut += h2 + coord + "\n\n"
 				textOut += block + rowCell + block + "\n\n"
-				log.Printf("found cell %s:\n%s\n", coord, rowCell)
+				cellFound++
+				dbgLog.Printf("found cell %s:\n%s\n", coord, rowCell)
 			}
 		}
 	}
 
-	//fmt.Println(textOut)
+	log.Println("Found cell: ", cellFound)
 	err = writeFile(textFile, textOut)
 	if err != nil {
 		return fmt.Errorf("write text file fail: %s", err)
