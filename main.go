@@ -13,6 +13,10 @@ import (
 	"strings"
 )
 
+const h1 = "#  "
+const h2 = "## "
+const block = "'''"
+
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "excel_text_replacer excel_file_name",
@@ -101,49 +105,40 @@ func text2excel(excelFile, textFile string) error {
 	defer file.Close()
 
 	var sheetName, coord, cellContent string
-	flagContentStart := false
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		content := scanner.Text()
 		//fmt.Println("line 100: ", content)
 
-		if strings.HasPrefix(content, "#  ") {
-			sheetName = strings.TrimPrefix(content, "#  ")
+		if strings.HasPrefix(content, h1) {
+			sheetName = strings.TrimPrefix(content, h1)
 			//fmt.Println("sheetname: ", sheetName)
-		} else if strings.HasPrefix(content, "## ") {
-			coord = strings.TrimPrefix(content, "## ")
+		} else if strings.HasPrefix(content, h2) {
+			coord = strings.TrimPrefix(content, h2)
 			//fmt.Println("coordination: ", coord)
 		} else {
-			if strings.HasPrefix(content, "'''") {
-				if flagContentStart {
-					cellContent = strings.TrimSuffix(cellContent, "\n")
-					//check or update cell
-					cell, err := f.GetCellValue(sheetName, coord)
-					if err != nil {
-						log.Fatal(err)
-						return (err)
-					}
-					if cellContent != cell {
-						f.SetCellStr(sheetName, coord, cellContent)
-						fmt.Println("Cell update: ", sheetName, coord)
-						fmt.Println(cell, " -> ", cellContent)
-					}
-					cellContent = ""
-					flagContentStart = false
-				} else {
-					flagContentStart = true
-				}
-			} else {
-				if flagContentStart {
-					cellContent += content + "\n"
-				} else {
-					if content != "" {
-						log.Println("skip line:", content)
-					} else {
-						continue
-					}
-				}
+			if strings.HasPrefix(content, block) {
+				content = strings.TrimPrefix(content, block)
+				cellContent = ""
 			}
+
+			if strings.HasSuffix(content, block) {
+				cellContent += strings.TrimSuffix(content, block)
+				//check or update cell
+				cell, err := f.GetCellValue(sheetName, coord)
+				if err != nil {
+					log.Fatal(err)
+					return (err)
+				}
+				if cellContent != cell {
+					f.SetCellStr(sheetName, coord, cellContent)
+					fmt.Println("Cell update: ", sheetName, coord)
+					fmt.Println(cell, " -> ", cellContent)
+				}
+				continue
+			}
+
+			cellContent += content + "\n"
 			//fmt.Println("content is: \n", content)
 		}
 	}
@@ -175,7 +170,7 @@ func excel2text(excelFile, textFile string) error {
 	textOutput := ""
 	for _, sheetName := range f.GetSheetList() {
 		fmt.Println(sheetName)
-		textOutput += "#  " + sheetName + "\n\n"
+		textOutput += h1 + sheetName + "\n\n"
 		// Get all the cols.
 		cols, err := f.GetCols(sheetName)
 		if err != nil {
@@ -193,9 +188,9 @@ func excel2text(excelFile, textFile string) error {
 					return err
 				}
 				fmt.Print("\n", coord, "\n")
-				textOutput += "## " + coord + "\n\n"
+				textOutput += h2 + coord + "\n\n"
 				fmt.Print(rowCell, "\n")
-				textOutput += "'''\n" + rowCell + "\n'''\n\n"
+				textOutput += block + rowCell + block + "\n\n"
 			}
 			fmt.Print("\n\n")
 		}
