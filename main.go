@@ -27,128 +27,124 @@ func main() {
 	genName := false
 	if len(args) < 1 {
 		fmt.Println(helpMsg)
-		return
+		os.Exit(0)
 	} else if len(args) == 1 {
 		genName = true
 	}
 
-	var excelFileName, textFileName string
+	var excelFile, textFile string
 	if strings.HasSuffix(args[0], ".xlsx") {
-		excelFileName = args[0]
+		excelFile = args[0]
 		if genName {
-			textFileName = excelFileName + ".md"
+			textFile = excelFile + ".md"
 		} else {
-			textFileName = args[1]
+			textFile = args[1]
 		}
-		fmt.Printf("coverting: %s -> %s\n", excelFileName, textFileName)
-		if err := excel2text(excelFileName, textFileName); err != nil {
-			log.Fatal(err)
+		log.Printf("coverting: %s -> %s\n", excelFile, textFile)
+		if err := excel2text(excelFile, textFile); err != nil {
+			log.Fatal("coverting excel to text fail: ", err)
+			os.Exit(1)
 		}
 	} else {
-		textFileName := args[0]
+		textFile = args[0]
 		if genName {
-			excelFileName = strings.TrimSuffix(textFileName, ".md")
+			excelFile = strings.TrimSuffix(textFile, ".md")
 		} else {
-			excelFileName = args[1]
+			excelFile = args[1]
 		}
-		fmt.Printf("updating: %s -> new_%s\n", textFileName, excelFileName)
-		if err := text2excel(excelFileName, textFileName); err != nil {
-			log.Fatal(err)
+		log.Printf("updating: %s -> new_%s\n", textFile, excelFile)
+		if err := text2excel(excelFile, textFile); err != nil {
+			log.Fatal("updating excel from text fail: ", err)
+			os.Exit(1)
 		}
 	}
 }
 
 func text2excel(excelFile, textFile string) error {
-	f, err := excelize.OpenFile(excelFile)
+	fpExcel, err := excelize.OpenFile(excelFile)
 	if err != nil {
-		log.Fatal(err)
-		return err
+		return fmt.Errorf("open excel file fail: %s", err)
 	}
 	defer func() {
-		// Close the spreadsheet.
-		if err := f.Close(); err != nil {
+		if err := fpExcel.Close(); err != nil {
 			log.Fatal(err)
 		}
 	}()
 
-	file, err := os.Open(textFile)
+	fpText, err := os.Open(textFile)
 	if err != nil {
-		log.Fatal(err)
+		return fmt.Errorf("open text file fail: %s", err)
 	}
-	defer file.Close()
+	defer fpText.Close()
 
-	var sheetName, coord, cellContent string
-	scanner := bufio.NewScanner(file)
+	var sheet, coord, newCell string
+	scanner := bufio.NewScanner(fpText)
 	for scanner.Scan() {
-		content := scanner.Text()
-		//fmt.Println("line 100: ", content)
+		line := scanner.Text()
 
-		if strings.HasPrefix(content, h1) {
-			sheetName = strings.TrimPrefix(content, h1)
-			//fmt.Println("sheetname: ", sheetName)
-		} else if strings.HasPrefix(content, h2) {
-			coord = strings.TrimPrefix(content, h2)
-			//fmt.Println("coordination: ", coord)
+		if strings.HasPrefix(line, h1) {
+			sheet = strings.TrimPrefix(line, h1)
+		} else if strings.HasPrefix(line, h2) {
+			coord = strings.TrimPrefix(line, h2)
 		} else {
-			if strings.HasPrefix(content, block) {
-				content = strings.TrimPrefix(content, block)
-				cellContent = ""
+			if strings.HasPrefix(line, block) {
+				line = strings.TrimPrefix(line, block)
+				newCell = ""
 			}
 
-			if strings.HasSuffix(content, block) {
-				cellContent += strings.TrimSuffix(content, block)
+			if strings.HasSuffix(line, block) {
+				newCell += strings.TrimSuffix(line, block)
 				//check or update cell
-				cell, err := f.GetCellValue(sheetName, coord)
+				cell, err := fpExcel.GetCellValue(sheet, coord)
 				if err != nil {
 					log.Fatal(err)
-					return (err)
 				}
-				if cellContent != cell {
-					f.SetCellStr(sheetName, coord, cellContent)
-					fmt.Println("Cell update: ", sheetName, coord)
-					fmt.Println(cell, " -> ", cellContent)
+				if newCell != cell {
+					err = fpExcel.SetCellStr(sheet, coord, newCell)
+					if err != nil {
+						log.Fatal("cell update fail", sheet, coord, err)
+						continue
+					}
+					log.Printf("Cell update: %s:%s\n-----\n%s\n=====\n%s\n++++\n", sheet, coord, cell, newCell)
 				}
 				continue
 			}
 
-			cellContent += content + "\n"
-			//fmt.Println("content is: \n", content)
+			newCell += line + "\n"
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+		log.Fatal("scanner error", err)
 	}
 
-	if err = f.SaveAs("new_" + excelFile); err != nil {
-		log.Fatal(err)
+	if err = fpExcel.SaveAs("new_" + excelFile); err != nil {
+		return fmt.Errorf("excel file save fail: %s", err)
 	}
 
 	return nil
 }
 
 func excel2text(excelFile, textFile string) error {
-	f, err := excelize.OpenFile(excelFile)
+	fpExcel, err := excelize.OpenFile(excelFile)
 	if err != nil {
-		log.Fatal(err)
-		return err
+		return fmt.Errorf("open excel fail: %s", err)
 	}
 	defer func() {
 		// Close the spreadsheet.
-		if err := f.Close(); err != nil {
+		if err := fpExcel.Close(); err != nil {
 			log.Fatal(err)
 		}
 	}()
 
-	textOutput := ""
-	for _, sheetName := range f.GetSheetList() {
-		fmt.Println(sheetName)
-		textOutput += h1 + sheetName + "\n\n"
+	textOut := ""
+	for _, sheet := range fpExcel.GetSheetList() {
+		log.Println("found sheet: ", sheet)
+		textOut += h1 + sheet + "\n\n"
 		// Get all the cols.
-		cols, err := f.GetCols(sheetName)
+		cols, err := fpExcel.GetCols(sheet)
 		if err != nil {
-			log.Fatal(err)
-			return err
+			return fmt.Errorf("excel get col fail: %s", err)
 		}
 		for i, col := range cols {
 			for j, rowCell := range col {
@@ -158,22 +154,18 @@ func excel2text(excelFile, textFile string) error {
 				coord, err := excelize.CoordinatesToCellName(i+1, j+1)
 				if err != nil {
 					log.Fatal(err)
-					return err
 				}
-				fmt.Print("\n", coord, "\n")
-				textOutput += h2 + coord + "\n\n"
-				fmt.Print(rowCell, "\n")
-				textOutput += block + rowCell + block + "\n\n"
+				textOut += h2 + coord + "\n\n"
+				textOut += block + rowCell + block + "\n\n"
+				log.Printf("found cell %s:\n%s\n", coord, rowCell)
 			}
-			fmt.Print("\n\n")
 		}
 	}
 
-	fmt.Println(textOutput)
-	err = writeFile(textFile, textOutput)
+	//fmt.Println(textOut)
+	err = writeFile(textFile, textOut)
 	if err != nil {
-		log.Fatal(err)
-		return err
+		return fmt.Errorf("write text file fail: %s", err)
 	}
 
 	return nil
@@ -182,15 +174,13 @@ func excel2text(excelFile, textFile string) error {
 func writeFile(fileName string, content string) error {
 	filePtr, err := os.Create(fileName)
 	if err != nil {
-		log.Fatal(err)
-		return err
+		return fmt.Errorf("create text file fail: %s", err)
 	}
 	defer filePtr.Close()
 
 	_, err = filePtr.WriteString(content)
 	if err != nil {
-		log.Fatal(err)
-		return err
+		return fmt.Errorf("file write error: %s", err)
 	}
 
 	return nil
