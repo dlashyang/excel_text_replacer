@@ -22,6 +22,7 @@ const helpMsg = `Usage:
   Updating excel file from text file: excel_text_replacer text_file excel_file`
 
 var flagDbgMsg bool
+var filterSheet string
 var dbgLog *log.Logger
 
 func initLogger() {
@@ -40,6 +41,7 @@ func initLogger() {
 }
 
 func main() {
+	flag.StringVar(&filterSheet, "sheet", "", "working on given sheet only")
 	flag.BoolVar(&flagDbgMsg, "v", false, "print debug info")
 	flag.Parse()
 
@@ -169,24 +171,28 @@ func excel2text(excelFile, textFile string) error {
 	textOut := ""
 	cellFound := 0
 	for _, sheet := range fpExcel.GetSheetList() {
+		if (filterSheet != "") && (filterSheet != sheet) {
+			continue
+		}
+
 		log.Println("found sheet: ", sheet)
 		textOut += h1 + sheet + "\n\n"
 		// Get all the cols.
-		cols, err := fpExcel.GetCols(sheet)
+		rows, err := fpExcel.GetRows(sheet)
 		if err != nil {
-			return fmt.Errorf("excel get col fail: %s", err)
+			return fmt.Errorf("excel get rows fail: %s", err)
 		}
-		for i, col := range cols {
-			for j, rowCell := range col {
-				if rowCell == "" {
+		for i, row := range rows {
+			for j, cell := range row {
+				if cell == "" {
 					continue
 				}
-				coord, err := excelize.CoordinatesToCellName(i+1, j+1)
+				coord, err := excelize.CoordinatesToCellName(j+1, i+1)
 				if err != nil {
 					log.Fatal(err)
 				}
 				textOut += h2 + coord + "\n\n"
-				textOut += block + rowCell + block + "\n\n"
+				textOut += block + cell + block + "\n\n"
 				cellFound++
 			}
 		}
