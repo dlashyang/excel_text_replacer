@@ -101,6 +101,7 @@ func text2excel(excelFile, textFile string) error {
 	var sheet, coord, newCell string
 	cellUpdated := 0
 	scanner := bufio.NewScanner(fpText)
+	flagBlockStart := false
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -109,18 +110,23 @@ func text2excel(excelFile, textFile string) error {
 		} else if strings.HasPrefix(line, h2) {
 			coord = strings.TrimPrefix(line, h2)
 		} else {
-			if strings.HasPrefix(line, block) {
-				line = strings.TrimPrefix(line, block)
-				newCell = ""
+			if !flagBlockStart {
+				if strings.HasPrefix(line, block) {
+					line = strings.TrimPrefix(line, block)
+					newCell = ""
+					flagBlockStart = true
+				}
 			}
 
 			if strings.HasSuffix(line, block) {
 				newCell += strings.TrimSuffix(line, block)
+				flagBlockStart = false
 				//check or update cell
 				cell, err := fpExcel.GetCellValue(sheet, coord)
 				if err != nil {
 					log.Fatal(err)
 				}
+
 				if newCell != cell {
 					err = fpExcel.SetCellStr(sheet, coord, newCell)
 					if err != nil {
