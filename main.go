@@ -64,7 +64,6 @@ func main() {
 		log.Printf("coverting: %s -> %s\n", excelFile, textFile)
 		if err := excel2text(excelFile, textFile); err != nil {
 			log.Fatal("coverting excel to text fail: ", err)
-			os.Exit(1)
 		}
 	} else {
 		textFile = args[0]
@@ -76,7 +75,6 @@ func main() {
 		log.Printf("updating: %s -> new_%s\n", textFile, excelFile)
 		if err := text2excel(excelFile, textFile); err != nil {
 			log.Fatal("updating excel from text fail: ", err)
-			os.Exit(1)
 		}
 	}
 }
@@ -130,7 +128,7 @@ func text2excel(excelFile, textFile string) error {
 				if newCell != cell {
 					err = fpExcel.SetCellStr(sheet, coord, newCell)
 					if err != nil {
-						log.Fatal("cell update fail", sheet, coord, err)
+						log.Println("cell update fail:", sheet, coord, err)
 						continue
 					}
 					cellUpdated++
@@ -190,7 +188,6 @@ func excel2text(excelFile, textFile string) error {
 				textOut += h2 + coord + "\n\n"
 				textOut += block + rowCell + block + "\n\n"
 				cellFound++
-				dbgLog.Printf("found cell %s:\n%s\n", coord, rowCell)
 			}
 		}
 	}
