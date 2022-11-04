@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/xuri/excelize/v2"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -33,10 +34,9 @@ func initLogger() {
 	mw := io.MultiWriter(os.Stdout, file)
 	log.SetOutput(mw)
 
-	if flagDbgMsg {
-		dbgLog = log.New(mw, "DEBUG: ", log.Lshortfile)
-	} else {
-		dbgLog = log.New(file, "DEBUG: ", log.Lshortfile)
+	dbgLog = log.New(file, "DEBUG: ", log.Ltime|log.Lmicroseconds|log.Lshortfile)
+	if !flagDbgMsg {
+		dbgLog.SetOutput(ioutil.Discard)
 	}
 }
 
@@ -91,12 +91,14 @@ func text2excel(excelFile, textFile string) error {
 			log.Fatal(err)
 		}
 	}()
+	dbgLog.Println("open excel file successfully")
 
 	fpText, err := os.Open(textFile)
 	if err != nil {
 		return fmt.Errorf("open text file fail: %s", err)
 	}
 	defer fpText.Close()
+	dbgLog.Println("open text file successfully")
 
 	var sheet, coord, newCell string
 	cellUpdated := 0
@@ -104,28 +106,36 @@ func text2excel(excelFile, textFile string) error {
 	flagBlockStart := false
 	for scanner.Scan() {
 		line := scanner.Text()
+		dbgLog.Printf("reading line:\n%s", line)
 
 		if strings.HasPrefix(line, h1) {
 			sheet = strings.TrimPrefix(line, h1)
+			dbgLog.Println("found sheet: ", sheet)
 		} else if strings.HasPrefix(line, h2) {
 			coord = strings.TrimPrefix(line, h2)
+			dbgLog.Println("found cell: ", coord)
 		} else {
 			if !flagBlockStart {
+				dbgLog.Println("flagBlockStart is off")
 				if strings.HasPrefix(line, block) {
 					line = strings.TrimPrefix(line, block)
 					newCell = ""
 					flagBlockStart = true
+					dbgLog.Println("block starts")
 				}
 			}
 
 			if strings.HasSuffix(line, block) {
 				newCell += strings.TrimSuffix(line, block)
 				flagBlockStart = false
+				dbgLog.Printf("block ends\n%s", newCell)
+
 				//check or update cell
 				cell, err := fpExcel.GetCellValue(sheet, coord)
 				if err != nil {
 					log.Fatal(err)
 				}
+				dbgLog.Printf("read cell %s:%s from excel\n%s", sheet, coord, cell)
 
 				if newCell != cell {
 					err = fpExcel.SetCellStr(sheet, coord, newCell)
@@ -167,10 +177,12 @@ func excel2text(excelFile, textFile string) error {
 			log.Fatal(err)
 		}
 	}()
+	dbgLog.Println("open excel file successfully")
 
 	textOut := ""
 	cellFound := 0
 	for _, sheet := range fpExcel.GetSheetList() {
+		dbgLog.Printf("found sheet %s with filter [%s]", sheet, filterSheet)
 		if (filterSheet != "") && (filterSheet != sheet) {
 			continue
 		}
@@ -194,6 +206,7 @@ func excel2text(excelFile, textFile string) error {
 				textOut += h2 + coord + "\n\n"
 				textOut += block + cell + block + "\n\n"
 				cellFound++
+				dbgLog.Printf("found cell %s:%s", sheet, coord)
 			}
 		}
 	}
