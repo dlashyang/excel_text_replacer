@@ -13,6 +13,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 )
 
 const h1 = "#  "
@@ -41,6 +42,8 @@ func initLogger() {
 }
 
 func main() {
+	start := time.Now()
+
 	flag.StringVar(&filterSheet, "sheet", "", "working on given sheet only")
 	flag.BoolVar(&flagDbgMsg, "v", false, "print debug info")
 	flag.Parse()
@@ -79,6 +82,7 @@ func main() {
 			log.Fatal("updating excel from text fail: ", err)
 		}
 	}
+	log.Println("done: ", time.Since(start))
 }
 
 func text2excel(excelFile, textFile string) error {
@@ -100,7 +104,8 @@ func text2excel(excelFile, textFile string) error {
 	defer fpText.Close()
 	dbgLog.Println("open text file successfully")
 
-	var sheet, coord, newCell string
+	var sheet, coord string
+	var b strings.Builder
 	cellUpdated := 0
 	scanner := bufio.NewScanner(fpText)
 	flagBlockStart := false
@@ -119,15 +124,16 @@ func text2excel(excelFile, textFile string) error {
 				dbgLog.Println("flagBlockStart is off")
 				if strings.HasPrefix(line, block) {
 					line = strings.TrimPrefix(line, block)
-					newCell = ""
+					b.Reset()
 					flagBlockStart = true
 					dbgLog.Println("block starts")
 				}
 			}
 
 			if strings.HasSuffix(line, block) {
-				newCell += strings.TrimSuffix(line, block)
+				b.WriteString(strings.TrimSuffix(line, block))
 				flagBlockStart = false
+				newCell := b.String()
 				dbgLog.Printf("block ends\n%s", newCell)
 
 				//check or update cell
@@ -150,7 +156,7 @@ func text2excel(excelFile, textFile string) error {
 				continue
 			}
 
-			newCell += line + "\n"
+			b.WriteString(line + "\n")
 		}
 	}
 
@@ -179,7 +185,7 @@ func excel2text(excelFile, textFile string) error {
 	}()
 	dbgLog.Println("open excel file successfully")
 
-	textOut := ""
+	var bTextOut strings.Builder
 	cellFound := 0
 	for _, sheet := range fpExcel.GetSheetList() {
 		dbgLog.Printf("found sheet %s with filter [%s]", sheet, filterSheet)
@@ -188,7 +194,7 @@ func excel2text(excelFile, textFile string) error {
 		}
 
 		log.Println("found sheet: ", sheet)
-		textOut += h1 + sheet + "\n\n"
+		bTextOut.WriteString(h1 + sheet + "\n\n")
 		// Get all the cols.
 		rows, err := fpExcel.GetRows(sheet)
 		if err != nil {
@@ -203,8 +209,7 @@ func excel2text(excelFile, textFile string) error {
 				if err != nil {
 					log.Fatal(err)
 				}
-				textOut += h2 + coord + "\n\n"
-				textOut += block + cell + block + "\n\n"
+				bTextOut.WriteString(h2 + coord + "\n\n" + block + cell + block + "\n\n")
 				cellFound++
 				dbgLog.Printf("found cell %s:%s", sheet, coord)
 			}
@@ -212,7 +217,7 @@ func excel2text(excelFile, textFile string) error {
 	}
 
 	log.Println("Found cell: ", cellFound)
-	err = writeFile(textFile, textOut)
+	err = writeFile(textFile, bTextOut.String())
 	if err != nil {
 		return fmt.Errorf("write text file fail: %s", err)
 	}
