@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"github.com/xuri/excelize/v2"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -37,7 +36,7 @@ func initLogger() {
 
 	dbgLog = log.New(file, "DEBUG: ", log.Ltime|log.Lmicroseconds|log.Lshortfile)
 	if !flagDbgMsg {
-		dbgLog.SetOutput(ioutil.Discard)
+		dbgLog.SetOutput(io.Discard)
 	}
 }
 
