@@ -5,8 +5,8 @@ package main
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
+	"github.com/spf13/cobra"
 	"github.com/xuri/excelize/v2"
 	"io"
 	"log"
@@ -18,13 +18,81 @@ import (
 const h1 = "#  "
 const h2 = "## "
 const block = "'''"
-const helpMsg = `Usage:
-  Converting to text file: excel_text_replacer excel_file text_file
-  Updating excel file from text file: excel_text_replacer text_file excel_file`
 
 var flagDbgMsg bool
 var filterSheet string
 var dbgLog *log.Logger
+
+// rootCmd represents the base command when called without any subcommands
+var rootCmd = &cobra.Command{
+	Use:   "excel_text_tool excel_file_name",
+	Short: "convert an excel file to text-format file",
+	Long: `A longer description that spans multiple lines and likely contains
+examples and usage of using your application. For example:
+
+  Converting to text file: excel_text_replacer excel_file text_file
+  Updating excel file from text file: excel_text_replacer text_file excel_file`,
+	// Uncomment the following line if your bare application
+	// has an action associated with it:
+	Args: cobra.MinimumNArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		flagDbgMsg, _ = cmd.Flags().GetBool("verbos")
+		filterSheet, _ = cmd.Flags().GetString("sheet")
+
+		initLogger()
+		genName := false
+		if len(args) == 1 {
+			genName = true
+		}
+
+		var excelFile, textFile string
+		if strings.HasSuffix(args[0], ".xlsx") {
+			excelFile = args[0]
+			if genName {
+				textFile = excelFile + ".md"
+			} else {
+				textFile = args[1]
+			}
+			log.Printf("coverting: %s -> %s\n", excelFile, textFile)
+			if err := excel2text(excelFile, textFile); err != nil {
+				log.Fatal("coverting excel to text fail: ", err)
+			}
+		} else {
+			textFile = args[0]
+			if genName {
+				excelFile = strings.TrimSuffix(textFile, ".md")
+			} else {
+				excelFile = args[1]
+			}
+			log.Printf("updating: %s -> new_%s\n", textFile, excelFile)
+			if err := text2excel(excelFile, textFile); err != nil {
+				log.Fatal("updating excel from text fail: ", err)
+			}
+		}
+	},
+}
+
+// Execute adds all child commands to the root command and sets flags appropriately.
+// This is called by main.main(). It only needs to happen once to the rootCmd.
+func execute() {
+	err := rootCmd.Execute()
+	if err != nil {
+		os.Exit(1)
+	}
+}
+
+func init() {
+	// Here you will define your flags and configuration settings.
+	// Cobra supports persistent flags, which, if defined here,
+	// will be global for your application.
+
+	// rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.excel_text_replacer.yaml)")
+
+	// Cobra also supports local flags, which will only run
+	// when this action is called directly.
+	rootCmd.Flags().BoolP("verbos", "v", false, "print debug info")
+	rootCmd.Flags().String("sheet", "", "working on given sheet only")
+}
 
 func initLogger() {
 	file, err := os.OpenFile("log.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
@@ -43,44 +111,8 @@ func initLogger() {
 func main() {
 	start := time.Now()
 
-	flag.StringVar(&filterSheet, "sheet", "", "working on given sheet only")
-	flag.BoolVar(&flagDbgMsg, "v", false, "print debug info")
-	flag.Parse()
+	execute()
 
-	initLogger()
-	args := flag.Args()
-	genName := false
-	if len(args) < 1 {
-		fmt.Println(helpMsg)
-		os.Exit(0)
-	} else if len(args) == 1 {
-		genName = true
-	}
-
-	var excelFile, textFile string
-	if strings.HasSuffix(args[0], ".xlsx") {
-		excelFile = args[0]
-		if genName {
-			textFile = excelFile + ".md"
-		} else {
-			textFile = args[1]
-		}
-		log.Printf("coverting: %s -> %s\n", excelFile, textFile)
-		if err := excel2text(excelFile, textFile); err != nil {
-			log.Fatal("coverting excel to text fail: ", err)
-		}
-	} else {
-		textFile = args[0]
-		if genName {
-			excelFile = strings.TrimSuffix(textFile, ".md")
-		} else {
-			excelFile = args[1]
-		}
-		log.Printf("updating: %s -> new_%s\n", textFile, excelFile)
-		if err := text2excel(excelFile, textFile); err != nil {
-			log.Fatal("updating excel from text fail: ", err)
-		}
-	}
 	log.Println("done: ", time.Since(start))
 }
 
