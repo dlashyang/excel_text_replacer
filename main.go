@@ -19,66 +19,79 @@ const h1 = "#  "
 const h2 = "## "
 const block = "'''"
 
-var flagDbgMsg bool
 var filterSheet string
 var dbgLog *log.Logger
 
 // rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
-	Use:   "excel_text_tool excel_file_name",
-	Short: "convert an excel file to text-format file",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
+var convertCmd = &cobra.Command{
+	Use:   "convert excel_file",
+	Short: "Convert excel file to text file",
+	Long: `Convert excel file to text format(markdown) file. For example:
 
-  Converting to text file: excel_text_replacer excel_file text_file
-  Updating excel file from text file: excel_text_replacer text_file excel_file`,
+  excel_text_tool convert excel_file.xlsx
+  excel_text_tool convert excel_file.xlsx -o target.md
+  excel_text_tool convert excel_file.xlsx --sheet Sheet1`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
-	Args: cobra.MinimumNArgs(1),
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		flagDbgMsg, _ = cmd.Flags().GetBool("verbos")
+		flagDbgMsg, _ := cmd.PersistentFlags().GetBool("verbos")
+		initLogger(flagDbgMsg)
+
 		filterSheet, _ = cmd.Flags().GetString("sheet")
+		textFile, _ := cmd.Flags().GetString("output")
 
-		initLogger()
-		genName := false
-		if len(args) == 1 {
-			genName = true
+		excelFile := args[0]
+		if textFile == "" {
+			textFile = excelFile + ".md"
 		}
-
-		var excelFile, textFile string
-		if strings.HasSuffix(args[0], ".xlsx") {
-			excelFile = args[0]
-			if genName {
-				textFile = excelFile + ".md"
-			} else {
-				textFile = args[1]
-			}
-			log.Printf("coverting: %s -> %s\n", excelFile, textFile)
-			if err := excel2text(excelFile, textFile); err != nil {
-				log.Fatal("coverting excel to text fail: ", err)
-			}
-		} else {
-			textFile = args[0]
-			if genName {
-				excelFile = strings.TrimSuffix(textFile, ".md")
-			} else {
-				excelFile = args[1]
-			}
-			log.Printf("updating: %s -> new_%s\n", textFile, excelFile)
-			if err := text2excel(excelFile, textFile); err != nil {
-				log.Fatal("updating excel from text fail: ", err)
-			}
+		log.Printf("coverting: %s -> %s\n", excelFile, textFile)
+		if err := excel2text(excelFile, textFile); err != nil {
+			log.Fatal("coverting excel to text fail: ", err)
 		}
 	},
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
-func execute() {
-	err := rootCmd.Execute()
-	if err != nil {
-		os.Exit(1)
-	}
+var updateCmd = &cobra.Command{
+	Use:   "update excel_file -i text_file",
+	Short: "Update excel file content based on specific text file",
+	Long: `Update excel file based on info provided by specific text file. For example:
+
+  excel_text_tool excel_file -i text_file[Mandantory]
+  excel_text_tool excel_file -i text_file -o save_as_new_excel_file
+  excel_text_tool excel_file -i text_file --overwrite`,
+	// Uncomment the following line if your bare application
+	// has an action associated with it:
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		flagDbgMsg, _ := cmd.PersistentFlags().GetBool("verbos")
+		initLogger(flagDbgMsg)
+
+		textFile, _ := cmd.Flags().GetString("input")
+		outputFile, _ := cmd.Flags().GetString("output")
+		flagOverwrite, _ := cmd.Flags().GetBool("overwrite")
+
+		excelFile := args[0]
+		if flagOverwrite {
+			outputFile = excelFile
+		}
+
+		if outputFile == "" {
+			outputFile = "new_" + excelFile
+		}
+
+		log.Printf("updating: %s -> %s based on [%s]\n", excelFile, outputFile, textFile)
+
+		if err := text2excel(excelFile, textFile, outputFile); err != nil {
+			log.Fatal("updating excel from text fail: ", err)
+		}
+	},
+}
+
+var rootCmd = &cobra.Command{
+	Use:   "excel_text_tool",
+	Short: "Tools for text work on excel file",
+	Args:  cobra.NoArgs,
 }
 
 func init() {
@@ -90,11 +103,21 @@ func init() {
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
-	rootCmd.Flags().BoolP("verbos", "v", false, "print debug info")
-	rootCmd.Flags().String("sheet", "", "working on given sheet only")
+	rootCmd.PersistentFlags().BoolP("verbos", "v", false, "print debug info")
+	rootCmd.AddCommand(convertCmd)
+	rootCmd.AddCommand(updateCmd)
+
+	convertCmd.Flags().String("sheet", "", "convert specific sheet only")
+	convertCmd.Flags().StringP("output", "o", "", "output file name")
+
+	updateCmd.Flags().StringP("input", "i", "", "input text file")
+	updateCmd.MarkFlagRequired("input")
+	updateCmd.Flags().StringP("output", "o", "", "output file name")
+	updateCmd.Flags().Bool("overwrite", false, "update original excel file")
+	updateCmd.MarkFlagsMutuallyExclusive("output", "overwrite")
 }
 
-func initLogger() {
+func initLogger(flagDbgMsg bool) {
 	file, err := os.OpenFile("log.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	if err != nil {
 		log.Fatal(err)
@@ -111,12 +134,15 @@ func initLogger() {
 func main() {
 	start := time.Now()
 
-	execute()
+	err := rootCmd.Execute()
+	if err != nil {
+		os.Exit(0)
+	}
 
 	log.Println("done: ", time.Since(start))
 }
 
-func text2excel(excelFile, textFile string) error {
+func text2excel(excelFile, textFile, outputFile string) error {
 	fpExcel, err := excelize.OpenFile(excelFile)
 	if err != nil {
 		return fmt.Errorf("open excel file fail: %s", err)
@@ -195,7 +221,7 @@ func text2excel(excelFile, textFile string) error {
 		log.Fatal("scanner error", err)
 	}
 
-	if err = fpExcel.SaveAs("new_" + excelFile); err != nil {
+	if err = fpExcel.SaveAs(outputFile); err != nil {
 		return fmt.Errorf("excel file save fail: %s", err)
 	}
 	log.Println("cell updated: ", cellUpdated)
